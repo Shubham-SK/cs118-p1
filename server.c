@@ -160,6 +160,23 @@ void handle_request(struct server_app *app, int client_socket) {
         file_name = path + 1;
     }
 
+    // parse the file name to replace %20 with spaces
+    char *temp = malloc(strlen(file_name) + 1);
+    int i = 0;
+    int j = 0;
+    while (file_name[i] != '\0') {
+        if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '0') {
+            temp[j] = ' ';
+            i += 3;
+        } else {
+            temp[j] = file_name[i];
+            i++;
+        }
+        j++;
+    }
+    
+    file_name = temp;
+
     printf("file_name: %s\n", file_name);
 
     // TODO: Implement proxy and call the function under condition
