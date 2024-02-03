@@ -160,6 +160,29 @@ void handle_request(struct server_app *app, int client_socket) {
         file_name = path + 1;
     }
 
+    // check the file extension. only txt, html and jpg files are supported
+    char *extension = strrchr(path, '.');
+    char *response;
+
+    // no period in the file name, so the file has no extension we return an
+    // octet-stream response in this case
+    if (extension == NULL) {
+        extension = "";
+    }
+
+    // if the file extension isn't supported, return a 501 response
+    // only txt, html, jpg, ts and no extension files are supported
+    if (strcmp(extension, ".txt") != 0 && 
+        strcmp(extension, ".html") != 0 &&
+        strcmp(extension, ".jpg") != 0 &&
+        strcmp(extension, ".ts") != 0 &&
+        strcmp(extension, "") != 0) {
+        response = "HTTP/1.0 501 Not Implemented\r\n\r\n"
+                    "File extension not supported";
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
     // parse the file name to replace %20 with spaces
     char *temp = malloc(strlen(file_name) + 1);
     int i = 0;
@@ -184,11 +207,12 @@ void handle_request(struct server_app *app, int client_socket) {
 
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
-    // if (need_proxy(...)) {
-    //    proxy_remote_file(app, client_socket, file_name);
-    // } else {
+
+    if (strcmp(extension, ".ts") == 0) {
+        proxy_remote_file(app, client_socket, file_name);
+    } else {
     serve_local_file(client_socket, file_name);
-    //}
+    }
 }
 
 void serve_local_file(int client_socket, const char *path) {
@@ -231,24 +255,12 @@ void serve_local_file(int client_socket, const char *path) {
 
     printf("file exists\n");
 
-    // check the file extension. only txt, html and jpg files are supported
+    // get the file extension (it was verified in handle_request)
     char *extension = strrchr(path, '.');
 
-    // no period in the file name, so the file has no extension we return an
-    // octet-stream response in this case
+    // no period in the file name, so the file has no extension
     if (extension == NULL) {
         extension = "";
-    }
-
-    // if the file extension isn't supported, return a 501 response
-    if (strcmp(extension, ".txt") != 0 && 
-        strcmp(extension, ".html") != 0 &&
-        strcmp(extension, ".jpg") != 0 &&
-        strcmp(extension, "") != 0) {
-        response = "HTTP/1.0 501 Not Implemented\r\n\r\n"
-                    "File extension not supported";
-        send(client_socket, response, strlen(response), 0);
-        return;
     }
 
     // get the file size
