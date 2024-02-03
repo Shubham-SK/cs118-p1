@@ -144,7 +144,23 @@ void handle_request(struct server_app *app, int client_socket) {
 
     // TODO: Parse the header and extract essential fields, e.g. file name
     // Hint: if the requested path is "/" (root), default to index.html
-    char file_name[] = "index.html";
+    // char file_name[] = "index.html";
+    char* file_name;
+
+    // request is of the form "GET /path HTTP/1.1"
+    // we want to extract the path from the request
+    char *path = strtok(request, " ");
+    path = strtok(NULL, " ");
+
+    if (path == NULL || strcmp(path, "/") == 0) {
+        // default to index.html if path is empty or root
+        file_name = "index.html";
+    } else {
+        // remove the leading / from the path
+        file_name = path + 1;
+    }
+
+    printf("file_name: %s\n", file_name);
 
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
@@ -167,13 +183,71 @@ void serve_local_file(int client_socket, const char *path) {
     // (When the requested file does not exist):
     // * Generate a correct response
 
-    char response[] = "HTTP/1.0 200 OK\r\n"
-                      "Content-Type: text/plain; charset=UTF-8\r\n"
-                      "Content-Length: 15\r\n"
-                      "\r\n"
-                      "Sample response";
+    // char* response = "HTTP/1.0 200 OK\r\n"
+    //                   "Content-Type: text/plain; charset=UTF-8\r\n"
+    //                   "Content-Length: 15\r\n"
+    //                   "\r\n"
+    //                   "Sample response";
 
-    send(client_socket, response, strlen(response), 0);
+    char* response;
+
+    // our server does not need to handle cases where the client requests a 
+    // file that is in a subdirectory, so we can expect the file to be in the
+    // same directory as the server. 
+    // additionally, the file name only contains alphabets, periods, spaces or
+    // % characters.
+
+    // open the file in read mode
+    // we attempt opening first to check if the file exists
+    FILE *file = fopen(path, "r");
+
+    if (file == NULL) {
+        // extra credit: if the file does not exist, return a 404 response
+        response = "HTTP/1.0 404 Not Found\r\n\r\n"
+                   "File not found";
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    // check the file extension. only txt, html and jpg files are supported
+    char *extension = strrchr(path, '.');
+
+    // if the file extension isn't supported, return a 501 response
+    if (strcmp(extension, ".txt") != 0 && 
+        strcmp(extension, ".html") != 0 &&
+        strcmp(extension, ".jpg") != 0) {
+        response = "HTTP/1.0 501 Not Implemented\r\n\r\n"
+                    "File extension not supported";
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    // get the file size
+    fseek(file, 0, SEEK_END);
+    int file_size = ftell(file);
+    rewind(file);
+
+    // read the file into a buffer
+    char *file_buffer = malloc(file_size);
+    fread(file_buffer, 1, file_size, file);
+
+    // build the response
+    char* sprintfed_response = malloc(100);
+    sprintf(sprintfed_response, "HTTP/1.0 200 OK\r\n"
+                        "Content-Type: %s\r\n"
+                        "Content-Length: %d\r\n"
+                        "\r\n", 
+                        (strcmp(extension, ".txt") == 0 ? "text/plain" : 
+                        (strcmp(extension, ".html") == 0 ? "text/html" : "image/jpeg")), 
+                        file_size);
+
+    // send the response
+    send(client_socket, sprintfed_response, strlen(sprintfed_response), 0);
+
+    // send the file
+    send(client_socket, file_buffer, file_size, 0);
+
+    return;
 }
 
 void proxy_remote_file(struct server_app *app, int client_socket, const char *request) {
