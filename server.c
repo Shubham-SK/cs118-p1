@@ -209,13 +209,22 @@ void serve_local_file(int client_socket, const char *path) {
         return;
     }
 
+    printf("file exists\n");
+
     // check the file extension. only txt, html and jpg files are supported
     char *extension = strrchr(path, '.');
+
+    // no period in the file name, so the file has no extension we return an
+    // octet-stream response in this case
+    if (extension == NULL) {
+        extension = "";
+    }
 
     // if the file extension isn't supported, return a 501 response
     if (strcmp(extension, ".txt") != 0 && 
         strcmp(extension, ".html") != 0 &&
-        strcmp(extension, ".jpg") != 0) {
+        strcmp(extension, ".jpg") != 0 &&
+        strcmp(extension, "") != 0) {
         response = "HTTP/1.0 501 Not Implemented\r\n\r\n"
                     "File extension not supported";
         send(client_socket, response, strlen(response), 0);
@@ -238,7 +247,8 @@ void serve_local_file(int client_socket, const char *path) {
                         "Content-Length: %d\r\n"
                         "\r\n", 
                         (strcmp(extension, ".txt") == 0 ? "text/plain" : 
-                        (strcmp(extension, ".html") == 0 ? "text/html" : "image/jpeg")), 
+                        (strcmp(extension, ".html") == 0 ? "text/html" : 
+                        (strcmp(extension, ".jpg") == 0 ? "image/jpeg": "application/octet-stream"))), 
                         file_size);
 
     // send the response
