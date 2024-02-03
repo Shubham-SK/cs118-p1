@@ -168,6 +168,9 @@ void handle_request(struct server_app *app, int client_socket) {
         if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '0') {
             temp[j] = ' ';
             i += 3;
+        } else if (file_name[i] == '%' && file_name[i + 1] == '2' && file_name[i + 2] == '5') {
+            temp[j] = '%';
+            i += 3;
         } else {
             temp[j] = file_name[i];
             i++;
