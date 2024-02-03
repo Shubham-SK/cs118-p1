@@ -138,9 +138,13 @@ void handle_request(struct server_app *app, int client_socket) {
     }
 
     buffer[bytes_read] = '\0';
-    // copy buffer to a new string
+
+    // copy buffer to new strings
     char *request = malloc(strlen(buffer) + 1);
+    char *request_strtok = malloc(strlen(buffer) + 1);
+
     strcpy(request, buffer);
+    strcpy(request_strtok, buffer);
 
     // TODO: Parse the header and extract essential fields, e.g. file name
     // Hint: if the requested path is "/" (root), default to index.html
@@ -149,7 +153,7 @@ void handle_request(struct server_app *app, int client_socket) {
 
     // request is of the form "GET /path HTTP/1.1"
     // we want to extract the path from the request
-    char *path = strtok(request, " ");
+    char *path = strtok(request_strtok, " ");
     path = strtok(NULL, " ");
 
     if (path == NULL || strcmp(path, "/") == 0) {
@@ -170,12 +174,13 @@ void handle_request(struct server_app *app, int client_socket) {
         extension = "";
     }
 
-    // if the file extension isn't supported, return a 501 response
-    // only txt, html, jpg, ts and no extension files are supported
+    // if the file extension isn't supported, return a 501 response only txt,
+    // html, jpg, ts, m3u8 and no extension files are supported
     if (strcmp(extension, ".txt") != 0 && 
         strcmp(extension, ".html") != 0 &&
         strcmp(extension, ".jpg") != 0 &&
         strcmp(extension, ".ts") != 0 &&
+        strcmp(extension, ".m3u8") != 0 &&
         strcmp(extension, "") != 0) {
         response = "HTTP/1.0 501 Not Implemented\r\n\r\n"
                     "File extension not supported";
@@ -203,15 +208,16 @@ void handle_request(struct server_app *app, int client_socket) {
     
     file_name = temp;
 
-    printf("file_name: %s\n", file_name);
+    // printf("file_name: %s\n", file_name);
 
     // TODO: Implement proxy and call the function under condition
     // specified in the spec
 
     if (strcmp(extension, ".ts") == 0) {
-        proxy_remote_file(app, client_socket, file_name);
+        // forward original request
+        proxy_remote_file(app, client_socket, request);
     } else {
-    serve_local_file(client_socket, file_name);
+        serve_local_file(client_socket, file_name);
     }
 }
 
@@ -253,9 +259,11 @@ void serve_local_file(int client_socket, const char *path) {
         return;
     }
 
-    printf("file exists\n");
+    // printf("file exists\n");
 
-    // get the file extension (it was verified in handle_request)
+    // get the file extension (it was verified in handle_request that the file
+    // has an extension of txt, html, jpg, or no extension. ts was handled
+    // separately in proxy_remote_file)
     char *extension = strrchr(path, '.');
 
     // no period in the file name, so the file has no extension
@@ -280,7 +288,8 @@ void serve_local_file(int client_socket, const char *path) {
                         "\r\n", 
                         (strcmp(extension, ".txt") == 0 ? "text/plain" : 
                         (strcmp(extension, ".html") == 0 ? "text/html" : 
-                        (strcmp(extension, ".jpg") == 0 ? "image/jpeg": "application/octet-stream"))), 
+                        (strcmp(extension, ".jpg") == 0 ? "image/jpeg" : 
+                        (strcmp(extension, ".m3u8") == 0 ? "text/plain" : "application/octet-stream")))), 
                         file_size);
 
     // send the response
@@ -302,6 +311,62 @@ void proxy_remote_file(struct server_app *app, int client_socket, const char *re
     // * When connection to the remote server fail, properly generate
     // HTTP 502 "Bad Gateway" response
 
-    char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
-    send(client_socket, response, strlen(response), 0);
+    // printf("Proxying request to remote server\n");
+    // printf("request: %s\n", request);
+
+    // create socket
+    int remote_socket = socket(AF_INET, SOCK_STREAM, 0);
+
+    // printf("socket created\n");
+
+    if (remote_socket == -1) {
+        // if the socket creation fails, return a 502 response
+        char response[] = "HTTP/1.0 502 Bad Gateway\r\n\r\n"
+                            "Bad Gateway";
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    // set up connection to the remote server on localhost:5001
+    struct sockaddr_in remote_addr;
+    remote_addr.sin_family = AF_INET;
+    remote_addr.sin_port = htons(app->remote_port);
+    remote_addr.sin_addr.s_addr = inet_addr(app->remote_host);
+
+    // printf("remote host: %s\n", app->remote_host);
+    // printf("remote port: %d\n", app->remote_port);
+
+    // connect to the remote server
+    if (connect(remote_socket, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) == -1) {
+        // if the connection fails, return a 502 response
+        char response[] = "HTTP/1.0 502 Bad Gateway\r\n\r\n"
+                            "Bad Gateway";
+        send(client_socket, response, strlen(response), 0);
+        return;
+    }
+
+    // printf("connected to remote server\n");
+
+    // send the request to the remote server
+    send(remote_socket, request, strlen(request), 0);
+
+    // printf("sent request to remote server\n");
+    // printf("request: %s\n", request);
+
+    // receive the response from the remote server
+    char buffer[BUFFER_SIZE];
+    ssize_t bytes_read;
+
+    while ((bytes_read = recv(remote_socket, buffer, sizeof(buffer) - 1, 0)) > 0) {
+        buffer[bytes_read] = '\0';
+        send(client_socket, buffer, bytes_read, 0);
+    }
+
+    // close the remote socket
+    close(remote_socket);
+
+    return;
+
+    // char response[] = "HTTP/1.0 501 Not Implemented\r\n\r\n";
+    // send(client_socket, response, strlen(response), 0);
 }
